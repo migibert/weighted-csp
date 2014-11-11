@@ -1,0 +1,76 @@
+import com.numergy.blog.csp.planning.entity.VirtualMachine;
+import com.numergy.blog.csp.planning.fact.ComputeServer;
+import com.numergy.blog.csp.planning.solution.VirtualMachinesAssignment;
+import org.optaplanner.core.api.score.buildin.hardsoft.HardSoftScoreHolder; 
+
+global HardSoftScoreHolder scoreHolder;
+
+// ############################################################################
+// Hard constraints
+// ############################################################################
+
+rule "doNotExceedServerMaxCpuResources"
+	when
+		$computeServer : ComputeServer($maxCpu: cpu)
+		$usedCpu : Number(intValue > $maxCpu) from accumulate(
+			VirtualMachine(server == $computeServer, $vmCpu : vcpu),
+			sum($vmCpu)
+		) 		
+	then
+		scoreHolder.addHardConstraintMatch(kcontext, $maxCpu - $usedCpu.intValue());
+end
+
+rule "doNotExceedServerMaxRamResources"
+	when
+		$computeServer : ComputeServer($maxRam: ram)
+		$usedRam : Number(intValue > $maxRam) from accumulate(
+			VirtualMachine(server == $computeServer, $vmRam : vram),
+			sum($vmRam)
+		) 		
+	then
+		scoreHolder.addHardConstraintMatch(kcontext, $maxRam - $usedRam.intValue());
+end
+
+// ############################################################################
+// Soft constraints
+// ############################################################################
+
+rule "maximizeCpuUsage"
+    when
+        $computeServer : ComputeServer($maxCpu : cpu)
+        $usedCpu : Number(intValue <= $maxCpu) from accumulate(
+			VirtualMachine(server == $computeServer, $vmCpu : vcpu),
+			sum($vmCpu)
+		)
+    then
+        scoreHolder.addSoftConstraintMatch(kcontext, -1000 * ($maxCpu - $usedCpu.intValue()));
+end
+
+rule "maximizeRamUsage"
+    when
+        $computeServer : ComputeServer($maxRam : ram)
+        $usedRam : Number(intValue <= $maxRam) from accumulate(
+			VirtualMachine(server == $computeServer, $vmRam : vram),
+			sum($vmRam)
+		)
+    then
+        scoreHolder.addSoftConstraintMatch(kcontext, -1000 * ($maxRam - $usedRam.intValue()));
+end
+
+
+rule "priorizeLowerCostServersForAffectation"
+    when
+        $computeServer : ComputeServer($cost : cost)
+        exists VirtualMachine(server == $computeServer)
+    then
+        scoreHolder.addSoftConstraintMatch(kcontext, - $cost);
+end
+
+rule "priorizeHigherReliableServersForAffectation"
+    when
+        $computeServer : ComputeServer($reliability : reliability)
+        exists VirtualMachine(server == $computeServer)
+    then
+        scoreHolder.addSoftConstraintMatch(kcontext, $reliability);
+end
+
